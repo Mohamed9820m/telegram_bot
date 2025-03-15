@@ -1,69 +1,29 @@
 import requests
 import time
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
+from playwright.sync_api import sync_playwright
 
 # 🔹 Telegram Bot Setup
 BOT_TOKEN = "7837741793:AAHlD2m2260cFqaDNlBlDGxHM1AIF_tUbZ4"
 CHAT_ID = "7328850919"
 
 # Global variables
-driver = None
+browser = None
+page = None
 is_running = False
 
-def send_telegram_message(message, reply_markup=None):
-    """Send a message to Telegram with optional inline buttons."""
+def send_telegram_message(message):
+    """Send a message to Telegram."""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
         "text": message,
         "parse_mode": "HTML"
     }
-    
-    if reply_markup:
-        payload["reply_markup"] = reply_markup  # Add inline keyboard if provided
-    
     try:
         response = requests.post(url, json=payload)
         return response.json()
     except Exception as e:
         print(f"Error sending Telegram message: {e}")
-
-def check_telegram_callback():
-    """Check for button clicks on Telegram."""
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
-    try:
-        response = requests.get(url).json()
-        updates = response.get("result", [])
-        
-        if updates:
-            # Process only the last update
-            last_update = updates[-1]
-            if "callback_query" in last_update:
-                callback_data = last_update["callback_query"]["data"]
-                # Acknowledge the callback
-                requests.post(
-                    f"https://api.telegram.org/bot{BOT_TOKEN}/answerCallbackQuery",
-                    json={"callback_query_id": last_update["callback_query"]["id"]}
-                )
-                return callback_data
-    except Exception as e:
-        print(f"Error fetching Telegram updates: {e}")
-    return None
-
-def send_inline_buttons(buttons):
-    """Send interactive buttons for session choices."""
-    inline_keyboard = {
-        "inline_keyboard": [
-            [{"text": button, "callback_data": button}] for button in buttons
-        ]
-    }
-    send_telegram_message("Please choose your booking session:", reply_markup=inline_keyboard)
 
 def check_telegram_message():
     """Check for new messages from the user."""
@@ -76,154 +36,73 @@ def check_telegram_message():
             return last_message.strip().lower()
     except Exception as e:
         print(f"Telegram Error: {e}")
-    return None    
+    return None
 
 def start_bot():
-    """Start the bot and initialize the booking process."""
-    global driver, is_running
+    """Start the bot using Playwright."""
+    global browser, page, is_running
     is_running = True
 
-    # ✅ Setup Chrome options
-    chrome_options = Options()
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--headless")  # Run in headless mode
-    chrome_options.add_argument("--disable-gpu")  # Disable GPU for headless mode
+    with sync_playwright() as p:
+        # Launch Chromium in headless mode
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
 
-    # ✅ Start WebDriver
-    send_telegram_message("🚀 Initializing the booking system... Please wait.")
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-
-    # Configuration
-    TARGET_TEXT = "FITNESS - SALA PESI PAL. MARIANI STUDENTI"
-    URL = "https://inforyou.teamsystem.com/ssdunime/"
-
-    # Prompt user to enter the target date
-    send_telegram_message("📅 Please enter the target date (e.g., 17 for the 17th):")
-    while True:
-        user_input = check_telegram_message()
-        if user_input and user_input.isdigit():
-            TARGET_DATE = user_input
-            send_telegram_message(f"✅ Target date set to: {TARGET_DATE}")
-            break
-        time.sleep(1)
-
-    # ✅ Open the website
-    send_telegram_message("🌍 Accessing the booking portal...")
-    driver.get(URL)
-    time.sleep(3)
-
-    # ✅ Click "Accedi" button
-    try:
-        send_telegram_message("🔍 Logging in...")
-        accedi_button = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Accedi')]"))
-        )
-        accedi_button.click()
-        time.sleep(2)
-    except Exception as e:
-        send_telegram_message("❌ Unable to proceed with login. Please try again later.")
-        reset_bot()
-        return
-
-    # ✅ Enter login credentials
-    try:
-        email_field = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//input[@formcontrolname='username']"))
-        )
-        email_field.send_keys("mrnmmd02h20z352x@studenti.unime.it")
-
-        password_field = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//input[@formcontrolname='password']"))
-        )
-        password_field.send_keys("MED9820med")
-
-        login_button = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//button[@type='submit' and contains(text(), 'Accedi')]"))
-        )
-        login_button.click()
-        time.sleep(5)
-    except Exception as e:
-        send_telegram_message("❌ Login failed. Please check your credentials and try again.")
-        reset_bot()
-        return
-
-    # ✅ Check if login was successful
-    current_url = driver.current_url
-    if "dashboard" in current_url or "profile" in current_url:
-        send_telegram_message("🎉 Login successful!")
-    else:
-        send_telegram_message("❌ Login failed. Please try again.")
-        reset_bot()
-        return
-
-    # ✅ Click "Prenota" button after login
-    try:
-        send_telegram_message("🔍 Accessing the booking section...")
-        prenota_button = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//a[contains(text(), 'Prenota')]"))
-        )
-        prenota_button.click()
+        # Open the website
+        send_telegram_message("🌍 Accessing the booking portal...")
+        page.goto("https://inforyou.teamsystem.com/ssdunime/")
         time.sleep(3)
-    except Exception as e:
-        send_telegram_message("❌ Unable to access the booking section. Please try again.")
-        reset_bot()
-        return
 
-    # ✅ Wait for the calendar to fetch data
-    send_telegram_message("⏳ Loading available dates...")
+        # Click "Accedi" button
+        send_telegram_message("🔍 Logging in...")
+        page.click("button:has-text('Accedi')")
+        time.sleep(2)
 
-    # ✅ Wait indefinitely until "cal-day-badge" appears on the calendar
-    while True:
-        try:
-            badge_element = driver.find_element(By.CLASS_NAME, "cal-day-badge")
-            break  # Exit the loop once found
-        except:
-            time.sleep(1)  # Keep checking every 1 second to avoid high CPU usage
+        # Enter login credentials
+        page.fill("input[formcontrolname='username']", "mrnmmd02h20z352x@studenti.unime.it")
+        page.fill("input[formcontrolname='password']", "MED9820med")
+        page.click("button:has-text('Accedi')")
+        time.sleep(5)
 
-    # ✅ Find and click the target date
-    if find_and_click_date():
-        session_mapping = None
-        while True:
-            session_mapping = check_and_report_events()
-            if session_mapping:
-                break
-            time.sleep(5)
-
-        # ✅ Wait for User Selection
-        send_telegram_message("🛑 Click a button to select your session.")
-
-        selected_button_text = None
-        while not selected_button_text:
-            selected_button_text = check_telegram_callback()
-            time.sleep(1)
-
-        send_telegram_message(f"🖱️ Selected session: {selected_button_text}")
-
-        # ✅ Get the full session text from the mapping
-        if selected_button_text in session_mapping:
-            full_session_text = session_mapping[selected_button_text]
-            send_telegram_message(f"🔍 Full session text: {full_session_text}")
-
-            # ✅ Click the selected session on the website
-            if not click_session_element(full_session_text):
-                send_telegram_message("❌ Failed to select the session. Please try again.")
-            else:
-                # ✅ Click the 'Prenota' button after selecting the session
-                if not click_prenota_button():
-                    send_telegram_message("❌ Failed to click 'Prenota' button. Please try again.")
+        # Check if login was successful
+        if "dashboard" in page.url or "profile" in page.url:
+            send_telegram_message("🎉 Login successful!")
         else:
-            send_telegram_message("❌ Invalid session selection. Please try again.")
+            send_telegram_message("❌ Login failed. Please check your credentials.")
+            reset_bot()
+            return
 
-    # Wait for 'done' before closing
-    wait_for_done()
+        # Click "Prenota" button
+        send_telegram_message("🔍 Accessing the booking section...")
+        page.click("a:has-text('Prenota')")
+        time.sleep(3)
+
+        # Wait for the calendar to load
+        send_telegram_message("⏳ Loading available dates...")
+        page.wait_for_selector(".cal-day-badge")
+
+        # Find and click the target date
+        target_date = "17"  # Replace with user input
+        page.click(f"text={target_date}")
+        send_telegram_message(f"✅ Clicked on {target_date}!")
+
+        # Check and report available sessions
+        events = page.query_selector_all(".cal-event")
+        for event in events:
+            if "FITNESS - SALA PESI PAL. MARIANI STUDENTI" in event.inner_text():
+                send_telegram_message(f"✅ Found session: {event.inner_text()}")
+
+        # Close the browser
+        browser.close()
+        is_running = False
 
 def reset_bot():
     """Reset the bot and close the browser."""
-    global driver, is_running
-    if driver:
-        driver.quit()
-        driver = None
+    global browser, page, is_running
+    if browser:
+        browser.close()
+        browser = None
+        page = None
     is_running = False
     send_telegram_message("🔄 Bot has been reset. You can start again with /start.")
 

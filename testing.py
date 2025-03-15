@@ -8,6 +8,12 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 
+
+import os
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+
 # 🔹 Telegram Bot Setup
 BOT_TOKEN = "7837741793:AAHlD2m2260cFqaDNlBlDGxHM1AIF_tUbZ4"
 CHAT_ID = "7328850919"
@@ -73,16 +79,19 @@ def check_telegram_message():
         print(f"Telegram Error: {e}")
     return None    
 
-# ✅ Setup Chrome options
+# Set Chrome options
 chrome_options = Options()
 chrome_options.add_argument("--no-sandbox")
 chrome_options.add_argument("--disable-dev-shm-usage")
 chrome_options.add_argument("--headless")  # Run in headless mode
 chrome_options.add_argument("--disable-gpu")  # Disable GPU for headless mode
 
-# ✅ Start WebDriver
-send_telegram_message("🚀 Initializing the booking system... Please wait.")
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+# Set the path to Chrome and ChromeDriver
+chrome_path = os.environ.get("CHROME_PATH", "/opt/google/chrome/chrome")
+chrome_options.binary_location = chrome_path
+
+# Start WebDriver
+driver = webdriver.Chrome(service=Service(os.environ.get("CHROMEDRIVER_PATH")), options=chrome_options)
 
 # Configuration
 TARGET_TEXT = "FITNESS - SALA PESI PAL. MARIANI STUDENTI"
